@@ -14,8 +14,10 @@ namespace Bobbin
 	{
 		public static void TreeToList<T>(T root, IList<T> result) where T : TreeElement
 		{
+			if (root == null)
+				throw new ArgumentNullException("root", "The input root is null");
 			if (result == null)
-				throw new NullReferenceException("The input 'IList<T> result' list is null");
+				throw new ArgumentNullException("result", "The input result list is null");
 			result.Clear();
 
 			Stack<T> stack = new Stack<T>();
@@ -100,6 +102,9 @@ namespace Bobbin
 		// Check state of input list
 		public static void ValidateDepthValues<T>(IList<T> list) where T : TreeElement
 		{
+			if (list == null)
+				throw new ArgumentNullException("list", "list is null");
+
 			if (list.Count == 0)
 				throw new ArgumentException("list should have items, count is 0, check before calling ValidateDepthValues", "list");
 

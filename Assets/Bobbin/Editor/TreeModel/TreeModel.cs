@@ -48,9 +48,15 @@ namespace Bobbin
 
 			m_Data = data;
 			if (m_Data.Count > 0)
+			{
 				m_Root = TreeElementUtility.ListToTree(data);
+			}
+			else
+			{
+				m_Root = null;
+			}
 
-			m_MaxID = m_Data.Max(e => e.id);
+			m_MaxID = m_Data.Count == 0 ? 0 : m_Data.Max(e => e.id);
 		}
 
 		public int GenerateUniqueID ()

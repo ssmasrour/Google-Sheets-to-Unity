@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.IO;
+using System.Linq;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 using UnityEngine.Assertions;
@@ -15,43 +15,43 @@ namespace Bobbin
         const float kToggleWidth = 18f;
 
         // All columns
-        enum MyColumns
+        enum Columns
         {
-            Toggle,
+            Enabled,
             Name,
-            Value1,
-            Value11,
-            Value2,
-            Value3,
+            SourceUrl,
+            SheetGid,
+            FileType,
+            Asset,
         }
 
         public enum SortOption
         {
-            Toggle,
+            Enabled,
             Name,
-            Value1,
-            Value11,
-            Value2,
-            Value3,
+            SourceUrl,
+            SheetGid,
+            FileType,
+            Asset,
         }
 
         // Sort options per column
         SortOption[] m_SortOptions =
         {
-            SortOption.Toggle,
+            SortOption.Enabled,
             SortOption.Name,
-            SortOption.Value1,
-            SortOption.Value11,
-            SortOption.Value2,
-            SortOption.Value3,
+            SortOption.SourceUrl,
+            SortOption.SheetGid,
+            SortOption.FileType,
+            SortOption.Asset,
         };
 
         public static void TreeToList(TreeViewItem root, IList<TreeViewItem> result)
         {
             if (root == null)
-                throw new NullReferenceException("root");
+                throw new ArgumentNullException("root");
             if (result == null)
-                throw new NullReferenceException("result");
+                throw new ArgumentNullException("result");
 
             result.Clear();
 
@@ -67,11 +67,14 @@ namespace Bobbin
                 TreeViewItem current = stack.Pop();
                 result.Add(current);
 
-                if (current.hasChildren && current.children[0] != null)
+                if (current.hasChildren)
                 {
                     for (int i = current.children.Count - 1; i >= 0; i--)
                     {
-                        stack.Push(current.children[i]);
+                        if (current.children[i] != null)
+                        {
+                            stack.Push(current.children[i]);
+                        }
                     }
                 }
             }
@@ -79,7 +82,7 @@ namespace Bobbin
 
         public BobbinTreeView(TreeViewState state, MultiColumnHeader multicolumnHeader, TreeModel<BobbinPath> model) : base(state, multicolumnHeader, model)
         {
-            Assert.AreEqual(m_SortOptions.Length, Enum.GetValues(typeof(MyColumns)).Length, "Ensure number of sort options are in sync with number of MyColumns enum values");
+            Assert.AreEqual(m_SortOptions.Length, Enum.GetValues(typeof(Columns)).Length, "Ensure number of sort options are in sync with number of Columns enum values");
 
             // Custom setup
             rowHeight = kRowHeights;
@@ -94,7 +97,7 @@ namespace Bobbin
         }
 
 
-        // Note we We only build the visible rows, only the backend has the full tree information. 
+        // Only visible rows are built; the model keeps the full tree information.
         // The treeview only creates info for the row list.
         protected override IList<TreeViewItem> BuildRows(TreeViewItem root)
         {
@@ -140,23 +143,23 @@ namespace Bobbin
 
                 switch (sortOption)
                 {
-                    case SortOption.Toggle:
+                    case SortOption.Enabled:
                         orderedQuery = orderedQuery.ThenBy(l => l.data.enabled, ascending);
                         break;
                     case SortOption.Name:
                         orderedQuery = orderedQuery.ThenBy(l => l.data.name, ascending);
                         break;
-                    case SortOption.Value1:
-                        orderedQuery = orderedQuery.ThenBy(l => l.data.url, ascending);
+                    case SortOption.SourceUrl:
+                        orderedQuery = orderedQuery.ThenBy(l => l.data.GetSourceUrl(), ascending);
                         break;
-                    case SortOption.Value11:
+                    case SortOption.SheetGid:
                         orderedQuery = orderedQuery.ThenBy(l => l.data.sheetId, ascending);
                         break;
-                    case SortOption.Value2:
+                    case SortOption.FileType:
                         orderedQuery = orderedQuery.ThenBy(l => l.data.fileType, ascending);
                         break;
-                    case SortOption.Value3:
-                        orderedQuery = orderedQuery.ThenBy(l => l.data.assetReference.name, ascending);
+                    case SortOption.Asset:
+                        orderedQuery = orderedQuery.ThenBy(l => GetAssetName(l.data), ascending);
                         break;
                 }
             }
@@ -170,18 +173,18 @@ namespace Bobbin
             bool ascending = multiColumnHeader.IsSortedAscending(history[0]);
             switch (sortOption)
             {
-                case SortOption.Toggle:
+                case SortOption.Enabled:
                     return myTypes.Order(l => l.data.enabled, ascending);
                 case SortOption.Name:
                     return myTypes.Order(l => l.data.name, ascending);
-                case SortOption.Value1:
-                    return myTypes.Order(l => l.data.url, ascending);
-                case SortOption.Value11:
+                case SortOption.SourceUrl:
+                    return myTypes.Order(l => l.data.GetSourceUrl(), ascending);
+                case SortOption.SheetGid:
                     return myTypes.Order(l => l.data.sheetId, ascending);
-                case SortOption.Value2:
+                case SortOption.FileType:
                     return myTypes.Order(l => l.data.fileType, ascending);
-                case SortOption.Value3:
-                    return myTypes.Order(l => l.data.assetReference.name, ascending);
+                case SortOption.Asset:
+                    return myTypes.Order(l => GetAssetName(l.data), ascending);
                 default:
                     Assert.IsTrue(false, "Unhandled enum");
                     break;
@@ -197,123 +200,179 @@ namespace Bobbin
 
             for (int i = 0; i < args.GetNumVisibleColumns(); ++i)
             {
-                CellGUI(args.GetCellRect(i), item, (MyColumns)args.GetColumn(i), ref args);
+                CellGUI(args.GetCellRect(i), item, (Columns)args.GetColumn(i), ref args);
             }
         }
 
-        void CellGUI(Rect cellRect, TreeViewItem<BobbinPath> item, MyColumns column, ref RowGUIArgs args)
+        void CellGUI(Rect cellRect, TreeViewItem<BobbinPath> item, Columns column, ref RowGUIArgs args)
         {
             // Center cell rect vertically (makes it easier to place controls, icons etc in the cells)
             CenterRectUsingSingleLineHeight(ref cellRect);
 
             switch (column)
             {
-                // case MyColumns.Icon1:
-                // 	{
-                // 		GUI.DrawTexture(cellRect, s_TestIcons[GetIcon1Index(item)], ScaleMode.ScaleToFit);
-                // 	}
-                // 	break;
-                case MyColumns.Toggle:
+                case Columns.Enabled:
                     {
-                        item.data.enabled = EditorGUI.Toggle(cellRect, new GUIContent("", "enable refresh?"), item.data.enabled); // hide when outside cell rect
+                        var enabled = EditorGUI.Toggle(cellRect, new GUIContent("", "enable refresh?"), item.data.enabled);
+                        if (enabled != item.data.enabled)
+                        {
+                            RecordSettingsChange("Toggle Bobbin File");
+                            item.data.enabled = enabled;
+                        }
                     }
                     break;
 
-                case MyColumns.Name:
+                case Columns.Name:
                     {
                         cellRect.width -= 20;
-                        item.data.name = GUI.TextField(cellRect, item.data.name);
+                        var name = GUI.TextField(cellRect, item.data.name ?? string.Empty);
+                        if (name != item.data.name)
+                        {
+                            RecordSettingsChange("Rename Bobbin File");
+                            item.data.name = name;
+                        }
+
                         cellRect.x += cellRect.width;
                         cellRect.width = 20;
+                        var previousBackgroundColor = GUI.backgroundColor;
                         GUI.backgroundColor = Color.Lerp(Color.red, Color.white, 0.75f);
                         if (GUI.Button(cellRect, new GUIContent("x", "delete this item")))
                         {
                             if (EditorUtility.DisplayDialog("Bobbin: confirm deletion", "Really delete " + item.data.name + "?", "Yes, delete", "No, cancel"))
                             {
-                                var list = new List<BobbinPath>();
-                                list.Add(item.data);
+                                RecordSettingsChange("Remove Bobbin File");
+                                var list = new List<BobbinPath> { item.data };
                                 treeModel.RemoveElements(list);
                             }
                         }
-                        GUI.backgroundColor = Color.white;
+
+                        GUI.backgroundColor = previousBackgroundColor;
                     }
                     break;
 
-                case MyColumns.Value1:
-                case MyColumns.Value11:
-                case MyColumns.Value2:
-                case MyColumns.Value3:
+                case Columns.SourceUrl:
                     {
-
-                        cellRect.xMin += 5f; // When showing controls make some extra spacing
-
-                        if (column == MyColumns.Value1)
+                        cellRect.xMin += 5f;
+                        var sourceUrl = BobbinCore.UnfixURL(item.data.GetSourceUrl());
+                        var hasUrl = sourceUrl.Length > 4;
+                        var urlRect = cellRect;
+                        if (hasUrl)
                         {
-                            bool hasURL = item.data.url != null && item.data.url.Length > 4;
-                            if (hasURL)
-                            {
-                                cellRect.width -= 20;
-                            }
-                            item.data.url = GUI.TextField(cellRect, item.data.url);
-                            if (hasURL)
-                            {
-                                cellRect.x += cellRect.width;
-                                cellRect.width = 20;
-                                if (GUI.Button(cellRect, new GUIContent(">", "click to view in web browser: " + BobbinCore.UnfixURL(item.data.url))))
-                                {
-                                    Application.OpenURL(BobbinCore.UnfixURL(item.data.url));
-                                }
-                            }
-
+                            urlRect.width -= 22;
                         }
-                        if (column == MyColumns.Value11)
-                        {
-                            item.data.sheetId = GUI.TextField(cellRect, item.data.sheetId);
-                        }
-                        if (column == MyColumns.Value2)
-                        {
-                            item.data.fileType = (Bobbin.FileType)EditorGUI.EnumPopup(cellRect, (Enum)item.data.fileType);
-                        }
-                        if (column == MyColumns.Value3)
-                        {
-                            if (item.data.assetReference != null)
-                            {
-                                cellRect.x += 24;
-                                cellRect.width -= 24;
-                                GUI.enabled = false;
-                                item.data.assetReference = EditorGUI.ObjectField(cellRect, item.data.assetReference, typeof(UnityEngine.Object), false);
-                                GUI.enabled = true;
-                                cellRect.x -= 20;
-                                cellRect.width = 20;
-                                if (GUI.Button(cellRect, new GUIContent("x", "reset asset file path\n" + item.data.filePath)))
-                                {
-                                    item.data.assetReference = null;
-                                    item.data.filePath = "";
-                                    item.data.lastFileHash = "";
-                                }
-                            }
-                            else
-                            {
-                                if (GUI.Button(cellRect, new GUIContent("Save As...", "click to select asset file path")))
-                                {
-                                    var newPath = EditorUtility.SaveFilePanelInProject("Bobbin: save " + item.data.name + " URL as file...", item.data.name + "." + item.data.fileType.ToString(), item.data.fileType.ToString(), "Save URL as file...");
-                                    if (newPath != null && newPath.Length > 0)
-                                    {
-                                        item.data.filePath = newPath;
-                                        item.data.lastFileHash = "";
-                                        if (item.data.url.Length > 4)
-                                        { // only fetch from WWW if user inputed a URL
-                                            BobbinCore.DoRefresh();
-                                        }
-                                    }
-                                } // end if button
-                            } // end else
-                        } // end if column3
 
+                        var newUrl = GUI.TextField(urlRect, sourceUrl);
+                        if (newUrl != sourceUrl)
+                        {
+                            RecordSettingsChange("Edit Bobbin URL");
+                            item.data.SetSourceUrl(newUrl);
+                        }
+
+                        if (hasUrl)
+                        {
+                            var openRect = new Rect(urlRect.xMax + 2, cellRect.y, 20, cellRect.height);
+                            if (GUI.Button(openRect, new GUIContent(">", "open source URL in web browser")))
+                            {
+                                Application.OpenURL(BobbinCore.UnfixURL(item.data.GetSourceUrl()));
+                            }
+                        }
                     }
+                    break;
 
+                case Columns.SheetGid:
+                    {
+                        cellRect.xMin += 5f;
+                        var sheetId = GUI.TextField(cellRect, item.data.sheetId ?? string.Empty);
+                        if (sheetId != item.data.sheetId)
+                        {
+                            RecordSettingsChange("Edit Bobbin Sheet GID");
+                            item.data.sheetId = sheetId;
+                        }
+                    }
+                    break;
+
+                case Columns.FileType:
+                    {
+                        cellRect.xMin += 5f;
+                        var fileType = (FileType)EditorGUI.EnumPopup(cellRect, item.data.fileType);
+                        if (fileType != item.data.fileType)
+                        {
+                            RecordSettingsChange("Edit Bobbin File Type");
+                            item.data.fileType = fileType;
+                        }
+                    }
+                    break;
+
+                case Columns.Asset:
+                    {
+                        cellRect.xMin += 5f;
+                        if (item.data.assetReference != null)
+                        {
+                            var resetRect = new Rect(cellRect.x, cellRect.y, 20, cellRect.height);
+                            var objectRect = new Rect(cellRect.x + 24, cellRect.y, Mathf.Max(0, cellRect.width - 24), cellRect.height);
+
+                            EditorGUI.BeginDisabledGroup(true);
+                            EditorGUI.ObjectField(objectRect, item.data.assetReference, typeof(UnityEngine.Object), false);
+                            EditorGUI.EndDisabledGroup();
+
+                            if (GUI.Button(resetRect, new GUIContent("x", "reset asset file path\n" + item.data.filePath)))
+                            {
+                                RecordSettingsChange("Clear Bobbin Asset Path");
+                                item.data.assetReference = null;
+                                item.data.filePath = string.Empty;
+                                item.data.lastFileHash = string.Empty;
+                            }
+                        }
+                        else
+                        {
+                            if (GUI.Button(cellRect, new GUIContent("Save As...", "select the asset file path")))
+                            {
+                                var defaultName = SanitizeFileName(string.IsNullOrEmpty(item.data.name) ? "BobbinFile" : item.data.name);
+                                var extension = item.data.fileType.ToString();
+                                var newPath = EditorUtility.SaveFilePanelInProject(
+                                    "Bobbin: save " + item.data.name + " URL as file...",
+                                    defaultName + "." + extension,
+                                    extension,
+                                    "Save URL as file...");
+
+                                if (!string.IsNullOrEmpty(newPath))
+                                {
+                                    RecordSettingsChange("Set Bobbin Asset Path");
+                                    item.data.filePath = newPath;
+                                    item.data.lastFileHash = string.Empty;
+                                    if (item.data.GetSourceUrl().Length > 4)
+                                    {
+                                        BobbinCore.DoRefresh();
+                                    }
+                                }
+                            }
+                        }
+                    }
                     break;
             }
+        }
+
+        static void RecordSettingsChange(string undoName)
+        {
+            Undo.RecordObject(BobbinSettings.Instance, undoName);
+            EditorUtility.SetDirty(BobbinSettings.Instance);
+        }
+
+        static string GetAssetName(BobbinPath path)
+        {
+            return path != null && path.assetReference != null ? path.assetReference.name : string.Empty;
+        }
+
+        static string SanitizeFileName(string value)
+        {
+            var invalidCharacters = Path.GetInvalidFileNameChars();
+            var fileName = value;
+            for (int i = 0; i < invalidCharacters.Length; i++)
+            {
+                fileName = fileName.Replace(invalidCharacters[i], '_');
+            }
+
+            return string.IsNullOrEmpty(fileName) ? "BobbinFile" : fileName;
         }
 
         // Rename
@@ -333,8 +392,11 @@ namespace Bobbin
             if (args.acceptedRename)
             {
                 var element = treeModel.Find(args.itemID);
-                element.name = args.newName;
-                Reload();
+                if (element != null)
+                {
+                    element.name = args.newName;
+                    Reload();
+                }
             }
         }
 
@@ -397,7 +459,7 @@ namespace Bobbin
                 },
                 new MultiColumnHeaderState.Column
                 {
-                    headerContent = new GUIContent("Sheet", "Bobbin will try to fetch and download content at this sheet."),
+                    headerContent = new GUIContent("GID", "Optional Google Sheets gid. Leave blank for the first sheet."),
                     headerTextAlignment = TextAlignment.Left,
                     sortedAscending = true,
                     sortingArrowAlignment = TextAlignment.Right,
@@ -430,14 +492,14 @@ namespace Bobbin
                 }
             };
 
-            Assert.AreEqual(columns.Length, Enum.GetValues(typeof(MyColumns)).Length, "Number of columns should match number of enum values: You probably forgot to update one of them.");
+            Assert.AreEqual(columns.Length, Enum.GetValues(typeof(Columns)).Length, "Number of columns should match number of enum values: You probably forgot to update one of them.");
 
             var state = new MultiColumnHeaderState(columns);
             return state;
         }
     }
 
-    static class MyExtensionMethods
+    static class EnumerableSortExtensions
     {
         public static IOrderedEnumerable<T> Order<T, TKey>(this IEnumerable<T> source, Func<T, TKey> selector, bool ascending)
         {

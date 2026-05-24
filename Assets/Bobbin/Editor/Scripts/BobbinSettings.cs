@@ -1,9 +1,7 @@
-﻿using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEditor;
-using UnityEditor.IMGUI.Controls;
 
 namespace Bobbin
 {
@@ -14,12 +12,29 @@ namespace Bobbin
     {
         public bool enabled = true;
         public FileType fileType;
-        public string initUrl,url, filePath, lastFileHash, label,sheetId;
+        public string initUrl, url, filePath, lastFileHash, label, sheetId;
         public Object assetReference;
 
         public BobbinPath (string name, int depth, int id) : base (name, depth, id)
         {
     
+        }
+
+        public string GetSourceUrl()
+        {
+            if (!string.IsNullOrEmpty(initUrl))
+            {
+                return initUrl.Trim();
+            }
+
+            return string.IsNullOrEmpty(url) ? string.Empty : url.Trim();
+        }
+
+        public void SetSourceUrl(string value)
+        {
+            var normalizedValue = string.IsNullOrEmpty(value) ? string.Empty : value.Trim();
+            initUrl = normalizedValue;
+            url = normalizedValue;
         }
     }
 
@@ -30,6 +45,12 @@ namespace Bobbin
 
         public bool autoRefresh = false;
         public double refreshInterval = 60.0;
+        public int requestTimeoutSeconds = 30;
+
+        const string SettingsFileName = "BobbinSettings.asset";
+        const string BobbinFolderName = "Bobbin";
+        const string EditorFolderName = "Editor";
+        const string DefaultSettingsFilePath = "Assets/Bobbin/Editor/BobbinSettings.asset";
 
         #region Singleton Behaviour
 
@@ -48,12 +69,14 @@ namespace Bobbin
                 if (possibleTempData != null)
                 {
                     instance = possibleTempData;
+                    instance.EnsureValidRoot();
                     return instance;
                 }
 
                 // no instance exists, create a new instance.
                 instance = CreateInstance<BobbinSettings>();
-                instance.paths.Add( new BobbinPath("root", -1, 0) );
+                instance.EnsureValidRoot();
+                EnsureSettingsFolderExists(GetSettingsFilePath());
                 AssetDatabase.CreateAsset(instance, GetSettingsFilePath());
                 AssetDatabase.SaveAssets();
                 return instance;
@@ -69,13 +92,18 @@ namespace Bobbin
         public static string LocateBobbinFolder()
         {
             string[] results = Directory.GetFiles(Application.dataPath, "BobbinCore.cs", SearchOption.AllDirectories);
-            if (results.Length > 0)
+            foreach (var result in results)
             {
-                var parent = Directory.GetParent(results[0]);
-                while (parent.Name != "Bobbin")
-                    parent = parent.Parent;
+                var parent = Directory.GetParent(result);
+                while (parent != null)
+                {
+                    if (parent.Name == BobbinFolderName)
+                    {
+                        return parent.FullName;
+                    }
 
-                return parent.FullName;
+                    parent = parent.Parent;
+                }
             }
 
             return null;
@@ -86,10 +114,56 @@ namespace Bobbin
         /// </summary>
         public static string GetSettingsFilePath()
         {
-            var path = LocateBobbinFolder(); //find folder in project...
-            path += "\\Editor\\BobbinSettings.asset"; //append on the path for temp data;
-            path = path.Substring(path.IndexOf("Assets")); //remove path before the assets folder
-            return (path);
+            var bobbinFolder = LocateBobbinFolder();
+            if (string.IsNullOrEmpty(bobbinFolder))
+            {
+                return DefaultSettingsFilePath;
+            }
+
+            var settingsPath = Path.Combine(bobbinFolder, EditorFolderName, SettingsFileName);
+            var dataPath = NormalizePath(Application.dataPath);
+            var normalizedSettingsPath = NormalizePath(settingsPath);
+
+            if (!normalizedSettingsPath.StartsWith(dataPath, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return DefaultSettingsFilePath;
+            }
+
+            return "Assets" + normalizedSettingsPath.Substring(dataPath.Length);
+        }
+
+        public void EnsureValidRoot()
+        {
+            if (paths == null)
+            {
+                paths = new List<BobbinPath>();
+            }
+
+            if (paths.Count == 0 || paths[0] == null || paths[0].depth != -1)
+            {
+                paths.Insert(0, new BobbinPath("root", -1, 0));
+            }
+
+            paths[0].name = string.IsNullOrEmpty(paths[0].name) ? "root" : paths[0].name;
+            paths[0].depth = -1;
+        }
+
+        static void EnsureSettingsFolderExists(string assetPath)
+        {
+            var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            var fullAssetPath = Path.GetFullPath(Path.Combine(projectRoot, assetPath));
+            var directoryPath = Path.GetDirectoryName(fullAssetPath);
+
+            if (!Directory.Exists(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+                AssetDatabase.Refresh();
+            }
+        }
+
+        static string NormalizePath(string path)
+        {
+            return Path.GetFullPath(path).Replace('\\', '/').TrimEnd('/');
         }
 
     }

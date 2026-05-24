@@ -20,7 +20,7 @@ To use Bobbin to import a Google Doc as a Text Asset in your Unity project, you 
 5. In the Unity menu bar, click Bobbin > Add URLs and Settings
   
 
-6. In the Unity inspector, click “Add New File”
+6. In the BobbinSettings in the Unity inspector, click “Add New File”
   
 
 7. Paste the link from Step 4 into the URL textbox
@@ -29,7 +29,7 @@ To use Bobbin to import a Google Doc as a Text Asset in your Unity project, you 
 8. Click “Save As…” button and pick somewhere to save it in your Project folder
 
 
-9. (Bobbin will now refresh and download your file)
+9. (Bobbin can now automatically refresh and download your file)
 
 
 Some important notes to keep in mind:

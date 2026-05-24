@@ -1,4 +1,3 @@
-﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
@@ -24,6 +23,7 @@ namespace Bobbin
         void OnEnable()
         {
             Undo.undoRedoPerformed += OnUndoRedoPerformed;
+            asset.EnsureValidRoot();
 
             var treeViewState = new TreeViewState();
             var jsonState = SessionState.GetString(kSessionStateKeyPrefix + asset.GetInstanceID(), "");
@@ -42,6 +42,8 @@ namespace Bobbin
 
             var treeModel = new TreeModel<BobbinPath>(asset.paths);
             m_TreeView = new BobbinTreeView(treeViewState, multiColumnHeader, treeModel);
+            m_TreeView.treeChanged += OnTreeChanged;
+            m_TreeView.beforeDroppingDraggedItems += OnBeforeDroppingDraggedItems;
 
             m_SearchField = new SearchField();
 
@@ -53,7 +55,12 @@ namespace Bobbin
         {
             Undo.undoRedoPerformed -= OnUndoRedoPerformed;
 
-            SessionState.SetString(kSessionStateKeyPrefix + asset.GetInstanceID(), JsonUtility.ToJson(m_TreeView.state));
+            if (m_TreeView != null)
+            {
+                m_TreeView.treeChanged -= OnTreeChanged;
+                m_TreeView.beforeDroppingDraggedItems -= OnBeforeDroppingDraggedItems;
+                SessionState.SetString(kSessionStateKeyPrefix + asset.GetInstanceID(), JsonUtility.ToJson(m_TreeView.state));
+            }
         }
 
         void OnUndoRedoPerformed()
@@ -70,12 +77,25 @@ namespace Bobbin
             Undo.RecordObject(asset, string.Format("Moving {0} Item{1}", draggedRows.Count, draggedRows.Count > 1 ? "s" : ""));
         }
 
+        void OnTreeChanged()
+        {
+            EditorUtility.SetDirty(asset);
+        }
+
         public override void OnInspectorGUI()
         {
-            if (asset.autoRefresh)
+            if (asset.autoRefresh || BobbinCore.IsRefreshInProgress)
             {
                 Repaint();
             }
+
+            if (m_TreeView == null || m_SearchField == null)
+            {
+                EditorGUILayout.HelpBox("Bobbin could not initialize the settings table. Select the asset again or recompile the project.", MessageType.Error);
+                return;
+            }
+
+            EditorGUI.BeginChangeCheck();
 
             GUILayout.Space(5f);
             ToolBar();
@@ -98,6 +118,11 @@ namespace Bobbin
                 EditorGUILayout.HelpBox(BobbinCore.lastReport, MessageType.Info);
                 EditorGUILayout.EndScrollView();
             }
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                EditorUtility.SetDirty(asset);
+            }
         }
 
         void SearchBar(Rect rect)
@@ -116,25 +141,54 @@ namespace Bobbin
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 GUILayout.BeginHorizontal();
+                EditorGUI.BeginDisabledGroup(BobbinCore.IsRefreshInProgress);
                 if (GUILayout.Button(new GUIContent("Refresh", "force Bobbin to scan for changed files immediately"), GUILayout.Width(80)))
                 {
                     BobbinCore.DoRefresh();
                 }
-                asset.autoRefresh = EditorGUILayout.ToggleLeft(new GUIContent("Auto refresh?", "if enabled, Bobbin will automatically download new files from the internet"), asset.autoRefresh, GUILayout.MaxWidth(90));
+                EditorGUI.EndDisabledGroup();
+
+                var autoRefresh = EditorGUILayout.ToggleLeft(new GUIContent("Auto refresh?", "if enabled, Bobbin will automatically download new files from the internet"), asset.autoRefresh, GUILayout.MaxWidth(90));
+                if (autoRefresh != asset.autoRefresh)
+                {
+                    RecordSettingsChange("Toggle Bobbin Auto Refresh");
+                    asset.autoRefresh = autoRefresh;
+                }
 
                 EditorGUILayout.Space();
                 GUILayout.Label("every", GUILayout.MaxWidth(36));
-                asset.refreshInterval = System.Convert.ToDouble(Mathf.Clamp(EditorGUILayout.IntField(System.Convert.ToInt32(asset.refreshInterval), GUILayout.MaxWidth(30)), 5, 999));
+                var refreshInterval = System.Convert.ToDouble(Mathf.Clamp(EditorGUILayout.IntField(System.Convert.ToInt32(asset.refreshInterval), GUILayout.MaxWidth(30)), 5, 999));
+                if (!refreshInterval.Equals(asset.refreshInterval))
+                {
+                    RecordSettingsChange("Edit Bobbin Refresh Interval");
+                    asset.refreshInterval = refreshInterval;
+                }
+                GUILayout.Label("sec.", GUILayout.MaxWidth(30));
+
+                GUILayout.Label("timeout", GUILayout.MaxWidth(48));
+                var timeoutSeconds = Mathf.Clamp(EditorGUILayout.IntField(asset.requestTimeoutSeconds <= 0 ? 30 : asset.requestTimeoutSeconds, GUILayout.MaxWidth(38)), 1, 600);
+                if (timeoutSeconds != asset.requestTimeoutSeconds)
+                {
+                    RecordSettingsChange("Edit Bobbin Request Timeout");
+                    asset.requestTimeoutSeconds = timeoutSeconds;
+                }
                 GUILayout.Label("sec.", GUILayout.MaxWidth(30));
 
                 GUILayout.EndHorizontal();
                 GUILayout.Space(5);
-                if (asset.autoRefresh)
+                if (BobbinCore.IsRefreshInProgress)
+                {
+                    Rect rect = GUILayoutUtility.GetRect(50, 18, "TextField", GUILayout.MaxWidth(10000));
+                    EditorGUI.ProgressBar(rect, 1f, "Refresh running...");
+                }
+                else if (asset.autoRefresh)
                 {
                     Rect rect = GUILayoutUtility.GetRect(50, 18, "TextField", GUILayout.MaxWidth(10000));
                     var progress = EditorApplication.timeSinceStartup - BobbinCore.lastRefreshTime;
-                    var progressPercent = progress / BobbinSettings.Instance.refreshInterval;
-                    EditorGUI.ProgressBar(rect, Mathf.Clamp01(System.Convert.ToSingle(progressPercent)), "Auto refresh in " + (BobbinSettings.Instance.refreshInterval - progress).ToString("F0"));
+                    var interval = System.Math.Max(5.0, asset.refreshInterval);
+                    var progressPercent = progress / interval;
+                    var remainingSeconds = System.Math.Max(0.0, interval - progress);
+                    EditorGUI.ProgressBar(rect, Mathf.Clamp01(System.Convert.ToSingle(progressPercent)), "Auto refresh in " + remainingSeconds.ToString("F0"));
                 }
             }
             using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
@@ -145,26 +199,33 @@ namespace Bobbin
                 {
                     Undo.RecordObject(asset, "Add Item To Asset");
 
-                    // Add item as child of selection
-                    var selection = m_TreeView.GetSelection();
-                    // TreeElement parent = (selection.Count == 1 ? m_TreeView.treeModel.Find(selection[0]) : null) ?? m_TreeView.treeModel.root;
                     TreeElement parent = m_TreeView.treeModel.root;
                     int depth = parent != null ? parent.depth + 1 : 0;
                     int id = m_TreeView.treeModel.GenerateUniqueID();
                     var element = new BobbinPath("Item " + id, depth, id);
                     m_TreeView.treeModel.AddElement(element, parent, 0);
+                    EditorUtility.SetDirty(asset);
 
                     // Select newly created element
                     m_TreeView.SetSelection(new[] { id }, TreeViewSelectionOptions.RevealAndFrame);
                 }
 
+                var selection = m_TreeView.GetSelection();
+                EditorGUI.BeginDisabledGroup(selection.Count == 0);
                 if (GUILayout.Button("Remove Highlighted File(s)", style))
                 {
                     Undo.RecordObject(asset, "Remove Item From Asset");
-                    var selection = m_TreeView.GetSelection();
                     m_TreeView.treeModel.RemoveElements(selection);
+                    EditorUtility.SetDirty(asset);
                 }
+                EditorGUI.EndDisabledGroup();
             }
+        }
+
+        void RecordSettingsChange(string undoName)
+        {
+            Undo.RecordObject(asset, undoName);
+            EditorUtility.SetDirty(asset);
         }
 
         internal class BobbinHeader : MultiColumnHeader

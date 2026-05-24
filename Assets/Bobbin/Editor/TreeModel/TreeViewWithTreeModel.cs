@@ -56,6 +56,11 @@ namespace Bobbin
 		protected override TreeViewItem BuildRoot()
 		{
 			int depthForHiddenRoot = -1;
+			if (m_TreeModel.root == null)
+			{
+				return new TreeViewItem(0, depthForHiddenRoot, "root");
+			}
+
 			return new TreeViewItem<T>(m_TreeModel.root.id, depthForHiddenRoot, m_TreeModel.root.name, m_TreeModel.root);
 		}
 
@@ -64,6 +69,7 @@ namespace Bobbin
 			if (m_TreeModel.root == null)
 			{
 				Debug.LogError ("tree model root is null. did you call SetData()?");
+				return m_Rows;
 			}
 
 			m_Rows.Clear ();
@@ -113,15 +119,19 @@ namespace Bobbin
 			const int kItemDepth = 0; // tree is flattened when searching
 
 			Stack<T> stack = new Stack<T>();
+			if (searchFromThis.children == null)
+				return;
+
 			foreach (var element in searchFromThis.children)
 				stack.Push((T)element);
 			while (stack.Count > 0)
 			{
 				T current = stack.Pop();
 				// Matches search?
-				if (current.name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+				var name = current.name ?? string.Empty;
+				if (name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
 				{
-					result.Add(new TreeViewItem<T>(current.id, kItemDepth, current.name, current));
+					result.Add(new TreeViewItem<T>(current.id, kItemDepth, name, current));
 				}
 
 				if (current.children != null && current.children.Count > 0)
@@ -199,7 +209,10 @@ namespace Bobbin
 				case DragAndDropPosition.OutsideItems:
 					{
 						if (args.performDrop)
-							OnDropDraggedElementsAtIndex(draggedRows, m_TreeModel.root, m_TreeModel.root.children.Count);
+						{
+							var insertIndex = m_TreeModel.root.children == null ? 0 : m_TreeModel.root.children.Count;
+							OnDropDraggedElementsAtIndex(draggedRows, m_TreeModel.root, insertIndex);
+						}
 
 						return DragAndDropVisualMode.Move;
 					}

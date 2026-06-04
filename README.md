@@ -72,6 +72,45 @@ under `Assets/Bobbin/Editor`, so it is not included in player builds.
 
 ## Installation
 
+### Install With Unity Package Manager
+
+This is the recommended way to use Bobbin in another Unity project.
+
+1. Open `Window > Package Manager`.
+2. Click `+`.
+3. Choose `Add package from git URL...`.
+4. Enter:
+
+```text
+https://github.com/ssmasrour/Google-Sheets-to-Unity.git?path=/com.ssmasrour.bobbin
+```
+
+To pin a branch or tag, append it after the package path:
+
+```text
+https://github.com/ssmasrour/Google-Sheets-to-Unity.git?path=/com.ssmasrour.bobbin#master
+```
+
+You can also add the package directly to `Packages/manifest.json`:
+
+```json
+{
+  "dependencies": {
+    "com.ssmasrour.bobbin": "https://github.com/ssmasrour/Google-Sheets-to-Unity.git?path=/com.ssmasrour.bobbin"
+  }
+}
+```
+
+If your project already contains an old copied `Assets/Bobbin` folder, remove it
+before installing the Package Manager version to avoid duplicate editor classes.
+
+When installed through Package Manager, Bobbin still creates the user-editable
+settings asset in the project at:
+
+```text
+Assets/Bobbin/Editor/BobbinSettings.asset
+```
+
 ### Use This Repository as a Unity Project
 
 1. Clone or download this repository.
@@ -318,6 +357,11 @@ Packages/
   manifest.json             Unity package manifest
 ProjectSettings/
   ProjectVersion.txt        Unity editor version used by this sample project
+com.ssmasrour.bobbin/
+  package.json              Unity Package Manager manifest
+  Editor/                   Package version of the Bobbin editor scripts
+  Documentation~/           Package Manager documentation
+  Samples~/                 Optional sample files shown in Package Manager
 ```
 
 ## Limitations

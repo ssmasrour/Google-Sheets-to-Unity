@@ -1,0 +1,27 @@
+{
+  "name": "com.ssmasrour.bobbin",
+  "version": "1.0.0",
+  "displayName": "Bobbin: Google Sheets to Unity",
+  "description": "A lightweight Unity editor tool for downloading public Google Sheets, Google Docs, and other URL files into a Unity project's Assets folder.",
+  "unity": "2019.4",
+  "keywords": [
+    "unity",
+    "editor",
+    "google-sheets",
+    "google-docs",
+    "csv",
+    "localization",
+    "tools"
+  ],
+  "author": {
+    "name": "S. S. Masrour",
+    "url": "https://github.com/ssmasrour"
+  },
+  "samples": [
+    {
+      "displayName": "Example Files",
+      "description": "Example Google Docs and Google Sheets outputs that can be used to test Bobbin imports.",
+      "path": "Samples~/Example Files"
+    }
+  ]
+}
